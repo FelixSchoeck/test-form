@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
+import DOMPurify from 'dompurify'
 import { submitFormData, type FormPayload } from '../api/dummyApi'
 
 const anliegenOptions = [
@@ -55,12 +56,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>
 
 function sanitizeInput(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+  return DOMPurify.sanitize(value, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
 }
 
 function toPayload(values: FormValues): FormPayload {
@@ -99,7 +95,7 @@ export default function BadForm() {
     const result = await submitFormData(toPayload(values))
 
     if (result.success) {
-      setStatus('✅ Form submitted successfully!')
+      setStatus('✅ Formular erfolgreich gesendet!')
       reset({
         name: '',
         email: '',
