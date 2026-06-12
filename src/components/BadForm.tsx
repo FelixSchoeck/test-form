@@ -1,79 +1,151 @@
-import { submitFormData } from '../api/dummyApi'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+import DOMPurify from 'dompurify'
+import { submitFormData, type FormPayload } from '../api/dummyApi'
 
-var formCounter: number = 0
-
-const anliegenOptions: any[] = [
+const anliegenOptions = [
+  { value: '', label: 'Bitte wählen' },
   { value: 'feedback', label: 'Feedback' },
   { value: 'support', label: 'Support' },
   { value: 'complaint', label: 'Beschwerde' },
-  { value: '', label: 'Bitte wählen' },
   { value: 'other', label: 'Sonstiges' },
-]
+] as const
 
-export default function BadForm(): any {
-  function handleSubmit(event: any): void {
-    event.preventDefault()
+const allowedAnliegen: string[] = anliegenOptions
+  .map((option) => option.value)
+  .filter((value) => value !== '')
 
-    var formData: any = {
-      name: document.querySelector<HTMLInputElement>('#name')!.value,
-      email: document.querySelector<HTMLInputElement>('#email')!.value,
-      age: document.querySelector<HTMLInputElement>('#age')!.value,
-      zip: document.querySelector<HTMLInputElement>('#plz')!.value,
-      password: document.querySelector<HTMLInputElement>('#password')!.value,
-      message: document.querySelector<HTMLTextAreaElement>('#message')!.value,
-      anliegen: document.querySelector<HTMLSelectElement>('#anliegen')!.value,
-      agb:
-        document.querySelector<HTMLInputElement>('#agb')!.checked === true
-          ? 'accepted'
-          : 'rejected',
-      newsletter:
-        document.querySelector<HTMLInputElement>('#newsletter')!.checked === true
-          ? 'yes'
-          : 'no',
+const formSchema = z.object({
+  name: z.string().trim().min(1, 'Name ist erforderlich').max(80, 'Max. 80 Zeichen'),
+  email: z
+    .string()
+    .trim()
+    .min(1, 'E-Mail ist erforderlich')
+    .email('Bitte eine gültige E-Mail angeben')
+    .max(254, 'Max. 254 Zeichen'),
+  age: z
+    .number({ error: 'Alter muss eine Zahl sein' })
+    .int('Alter muss eine ganze Zahl sein')
+    .min(1, 'Alter muss mindestens 1 sein')
+    .max(120, 'Alter darf höchstens 120 sein'),
+  zip: z
+    .number({ error: 'PLZ muss eine Zahl sein' })
+    .int('PLZ muss eine ganze Zahl sein')
+    .min(1000, 'PLZ ist zu kurz')
+    .max(99999, 'PLZ darf höchstens 5-stellig sein'),
+  password: z
+    .string()
+    .min(8, 'Passwort muss mindestens 8 Zeichen haben')
+    .max(128, 'Passwort darf höchstens 128 Zeichen haben'),
+  message: z
+    .string()
+    .trim()
+    .min(1, 'Nachricht ist erforderlich')
+    .max(1000, 'Nachricht darf höchstens 1000 Zeichen haben'),
+  anliegen: z.string().refine((value) => allowedAnliegen.includes(value), {
+    message: 'Bitte ein Anliegen auswählen',
+  }),
+  agb: z.boolean().refine((value) => value, {
+    message: 'Bitte AGB akzeptieren',
+  }),
+  newsletter: z.boolean(),
+})
+
+type FormValues = z.infer<typeof formSchema>
+
+function sanitizeInput(value: string): string {
+  return DOMPurify.sanitize(value, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
+}
+
+function toPayload(values: FormValues): FormPayload {
+  return {
+    ...values,
+    name: sanitizeInput(values.name),
+    email: sanitizeInput(values.email),
+    message: sanitizeInput(values.message),
+    anliegen: sanitizeInput(values.anliegen),
+  }
+}
+
+export default function BadForm() {
+  const [status, setStatus] = useState('Warte auf Eingabe...')
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      message: '',
+      anliegen: '',
+      password: '',
+      newsletter: true,
+      agb: false,
+    },
+  })
+
+  const onSubmit = async (values: FormValues): Promise<void> => {
+    setStatus('⏳ Sende Formular...')
+    const result = await submitFormData(toPayload(values))
+
+    if (result.success) {
+      setStatus('✅ Formular erfolgreich gesendet!')
+      reset({
+        name: '',
+        email: '',
+        age: undefined,
+        zip: undefined,
+        password: '',
+        message: '',
+        anliegen: '',
+        newsletter: true,
+        agb: false,
+      })
+      return
     }
 
-    formCounter++
-    console.log('📋 Form submitted #' + formCounter + ':', formData)
-
-    // Bad practice: eval to "process" the form data
-    eval("console.log('🚀 Processing form #" + formCounter + "')")
-
-    var result: any = submitFormData(formData)
-    console.log('📨 Result:', result)
-
-    setTimeout(function () {
-      alert(
-        'Formular gesendet! Check die Konsole für Details.\nPassword: ' +
-          formData.password
-      )
-    }, 200)
+    setStatus(`❌ Error: ${result.error}`)
   }
 
   function handleReset(): void {
-    var confirmed: any = confirm('Wirklich zurücksetzen? Alle Daten weg!')
-    if (confirmed === true) {
-      ;(document.getElementById('myForm') as any).reset()
-      document.getElementById('status')!.innerHTML =
-        '🔄 Form was reset at ' + new Date().toLocaleString()
+    const confirmed = window.confirm('Wirklich zurücksetzen? Alle Daten weg!')
+    if (confirmed) {
+      reset({
+        name: '',
+        email: '',
+        age: undefined,
+        zip: undefined,
+        password: '',
+        message: '',
+        anliegen: '',
+        newsletter: true,
+        agb: false,
+      })
+      setStatus(`🔄 Form was reset at ${new Date().toLocaleString()}`)
     }
   }
 
-  // Bad practice: inline styles everywhere
-  var containerStyle: any = {
+  const containerStyle = {
     maxWidth: '800px',
     margin: '40px auto',
     padding: '20px',
     fontFamily: 'Arial',
   }
 
-  var fieldsetStyle: any = {
+  const fieldsetStyle = {
     border: '2px solid #ccc',
     borderRadius: '8px',
     padding: '20px',
     marginBottom: '20px',
   }
 
-  var inputStyle: any = {
+  const inputStyle = {
     width: '100%',
     padding: '8px',
     margin: '4px 0 12px 0',
@@ -81,20 +153,25 @@ export default function BadForm(): any {
     border: '1px solid #ddd',
   }
 
-  var labelStyle: any = { fontWeight: 'bold', display: 'block' }
-  var buttonStyle: any = {
+  const labelStyle = { fontWeight: 'bold', display: 'block' }
+  const buttonStyle = {
     padding: '10px 24px',
     fontSize: '16px',
     marginRight: '10px',
     cursor: 'pointer',
   }
-  var errorButtonStyle: any = {
+  const errorTextStyle = {
+    color: '#b00020',
+    marginTop: '-8px',
+    marginBottom: '10px',
+    fontSize: '14px',
+  }
+
+  const secondaryButtonStyle = {
     padding: '10px 24px',
     fontSize: '16px',
     marginRight: '10px',
     cursor: 'pointer',
-    backgroundColor: '#ff4444',
-    color: 'white',
   }
 
   return (
@@ -102,85 +179,129 @@ export default function BadForm(): any {
       <h1 style={{ textAlign: 'center', color: '#333' }}>
         📝 Showcase Formular
       </h1>
-      <p style={{ textAlign: 'center', color: '#666' }}>
-        Dieses Formular hat <strong style={{ color: 'red' }}>KEINE</strong>{' '}
-        Validierung. Viel Spaß!
-      </p>
+      <p style={{ textAlign: 'center', color: '#666' }}>Mit Validierung und sicheren API-Calls.</p>
 
-      <form id="myForm" onSubmit={handleSubmit}>
+      <form id="myForm" onSubmit={handleSubmit(onSubmit)} noValidate>
         <div style={fieldsetStyle}>
           <h2>Persönliche Daten</h2>
 
-          <label style={labelStyle}>Name:</label>
-          <input id="name" type="text" style={inputStyle} placeholder="Max Mustermann" />
+          <label htmlFor="name" style={labelStyle}>
+            Name:
+          </label>
+          <input
+            id="name"
+            type="text"
+            style={inputStyle}
+            placeholder="Max Mustermann"
+            maxLength={80}
+            {...register('name')}
+          />
+          {errors.name && <p style={errorTextStyle}>{errors.name.message}</p>}
 
-          <label style={labelStyle}>E-Mail:</label>
-          <input id="email" type="text" style={inputStyle} placeholder="user@example.com" />
+          <label htmlFor="email" style={labelStyle}>
+            E-Mail:
+          </label>
+          <input
+            id="email"
+            type="email"
+            style={inputStyle}
+            placeholder="user@example.com"
+            maxLength={254}
+            {...register('email')}
+          />
+          {errors.email && <p style={errorTextStyle}>{errors.email.message}</p>}
 
-          <label style={labelStyle}>Alter:</label>
-          <input id="age" type="text" style={inputStyle} placeholder="z.B. 25" />
+          <label htmlFor="age" style={labelStyle}>
+            Alter:
+          </label>
+          <input
+            id="age"
+            type="number"
+            style={inputStyle}
+            placeholder="z.B. 25"
+            min={1}
+            max={120}
+            {...register('age', { valueAsNumber: true })}
+          />
+          {errors.age && <p style={errorTextStyle}>{errors.age.message}</p>}
 
-          <label style={labelStyle}>Postleitzahl:</label>
-          <input id="plz" type="text" style={inputStyle} placeholder="12345" maxLength={5} />
+          <label htmlFor="plz" style={labelStyle}>
+            Postleitzahl:
+          </label>
+          <input
+            id="plz"
+            type="number"
+            style={inputStyle}
+            placeholder="12345"
+            min={1000}
+            max={99999}
+            {...register('zip', { valueAsNumber: true })}
+          />
+          {errors.zip && <p style={errorTextStyle}>{errors.zip.message}</p>}
 
-          <label style={labelStyle}>Passwort:</label>
-          <input id="password" type="password" style={inputStyle} placeholder="••••••••" />
+          <label htmlFor="password" style={labelStyle}>
+            Passwort:
+          </label>
+          <input
+            id="password"
+            type="password"
+            style={inputStyle}
+            placeholder="••••••••"
+            minLength={8}
+            maxLength={128}
+            {...register('password')}
+          />
+          {errors.password && <p style={errorTextStyle}>{errors.password.message}</p>}
         </div>
 
         <div style={fieldsetStyle}>
           <h2>Details</h2>
 
-          <label style={labelStyle}>Anliegen:</label>
-          <select id="anliegen" style={inputStyle}>
-            {anliegenOptions.map(function (opt: any, index: any) {
-              return (
-                <option key={index} value={opt.value}>
-                  {opt.label}
-                </option>
-              )
-            })}
+          <label htmlFor="anliegen" style={labelStyle}>
+            Anliegen:
+          </label>
+          <select id="anliegen" style={inputStyle} {...register('anliegen')}>
+            {anliegenOptions.map((option) => (
+              <option key={option.value || 'empty'} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
+          {errors.anliegen && <p style={errorTextStyle}>{errors.anliegen.message}</p>}
 
-          <label style={labelStyle}>Nachricht:</label>
+          <label htmlFor="message" style={labelStyle}>
+            Nachricht:
+          </label>
           <textarea
             id="message"
             style={{ ...inputStyle, height: '120px' }}
             placeholder="Deine Nachricht..."
+            maxLength={1000}
+            {...register('message')}
           ></textarea>
+          {errors.message && <p style={errorTextStyle}>{errors.message.message}</p>}
         </div>
 
         <div style={fieldsetStyle}>
           <h2>Einstellungen</h2>
 
-          <label>
-            <input id="agb" type="checkbox" /> Ich akzeptiere die AGB
+          <label htmlFor="agb">
+            <input id="agb" type="checkbox" {...register('agb')} /> Ich akzeptiere die AGB
           </label>
+          {errors.agb && <p style={errorTextStyle}>{errors.agb.message}</p>}
           <br />
-          <label>
-            <input id="newsletter" type="checkbox" defaultChecked={true} /> Newsletter
+          <label htmlFor="newsletter">
+            <input id="newsletter" type="checkbox" {...register('newsletter')} /> Newsletter
             abonnieren
-          </label>
-          <br />
-          <label>
-            <input id="newsletter" type="checkbox" /> Nochmal Newsletter (Bug: gleiche ID)
           </label>
         </div>
 
         <div>
-          <button type="submit" style={buttonStyle}>
+          <button type="submit" style={buttonStyle} disabled={isSubmitting}>
             🚀 Absenden
           </button>
-          <button type="button" onClick={handleReset} style={buttonStyle}>
+          <button type="button" onClick={handleReset} style={secondaryButtonStyle}>
             🔄 Zurücksetzen
-          </button>
-          <button
-            type="button"
-            style={errorButtonStyle}
-            onClick={function () {
-              throw new Error('Manueller Fehler!')
-            }}
-          >
-            💥 Fehler auslösen
           </button>
         </div>
       </form>
@@ -194,31 +315,7 @@ export default function BadForm(): any {
           borderRadius: '4px',
         }}
       >
-        Warte auf Eingabe...
-      </div>
-
-      <div
-        style={{
-          marginTop: '40px',
-          padding: '15px',
-          backgroundColor: '#fff3cd',
-          border: '1px solid #ffc107',
-          borderRadius: '4px',
-        }}
-      >
-        <strong>⚠️ Bad Practices in dieser App:</strong>
-        <ul>
-          <li>Keine Validierung (alles erlaubt)</li>
-          <li>Passwort wird im Klartext in localStorage gespeichert</li>
-          <li>console.log von sensitiven Daten</li>
-          <li>Direct DOM manipulation statt React State</li>
-          <li>{'<any>'} Types überall (TypeScript ignoriert)</li>
-          <li>var statt let/const</li>
-          <li>Kein Error Handling bei Fetch</li>
-          <li>Duplizierte IDs im HTML</li>
-          <li>eval() wird verwendet</li>
-          <li>Fehlende Keys in Liste (nur index)</li>
-        </ul>
+        {status}
       </div>
     </div>
   )

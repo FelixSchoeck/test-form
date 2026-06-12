@@ -1,33 +1,42 @@
 const API_URL: string = 'https://jsonplaceholder.typicode.com/posts'
 
-export function submitFormData(data: any): any {
-  var response: any
-  var error: any
+export type FormPayload = {
+  name: string
+  email: string
+  age: number
+  zip: number
+  password: string
+  message: string
+  anliegen: string
+  agb: boolean
+  newsletter: boolean
+}
 
-  console.log('📤 Sending data to backend:', data)
-  console.log('🔑 User password:', data.password)
+export type SubmitResult = {
+  success: boolean
+  error?: string
+}
 
-  fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': 'sk-1234567890-this-is-fake',
-    },
-    body: JSON.stringify(data),
-  })
-    .then(function (res: any) {
-      response = res
-      document.getElementById('status')!.innerHTML =
-        '✅ Form submitted successfully!'
+export async function submitFormData(data: FormPayload): Promise<SubmitResult> {
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
     })
-    .catch(function (err: any) {
-      error = err
-      document.getElementById('status')!.innerHTML =
-        '❌ Error: ' + err.message
-    })
 
-  localStorage.setItem('lastPassword', data.password)
-  localStorage.setItem('lastFormData', JSON.stringify(data))
+    if (!response.ok) {
+      return { success: false, error: `API request failed with status ${response.status}` }
+    }
 
-  return { response: response, error: error }
+    return { success: true }
+  } catch (error) {
+    if (error instanceof Error) {
+      return { success: false, error: error.message }
+    }
+
+    return { success: false, error: 'Unknown error during request' }
+  }
 }
